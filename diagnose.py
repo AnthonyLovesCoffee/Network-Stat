@@ -118,3 +118,21 @@ class NetworkDiagnostics:
             result["packet_loss"] = 100 - (result["packets_received"] / result["packets_sent"] * 100)
 
         return result
+    
+    # check ports
+    def check_port(self, host, port):
+        try:
+            sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+            sock.settimeout(2)
+            result = sock.connect_ex((host, port))
+            sock.close()
+            
+            return {
+                "port": port,
+                "status": "open" if result == 0 else "closed",
+                "service": self._get_common_service_name(port)
+            }
+        except socket.gaierror:
+            return {"port": port, "status": "error", "error": "Could not resolve hostname"}
+        except Exception as e:
+            return {"port": port, "status": "error", "error": str(e)}
