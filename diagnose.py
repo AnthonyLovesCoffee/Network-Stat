@@ -136,3 +136,119 @@ class NetworkDiagnostics:
             return {"port": port, "status": "error", "error": "Could not resolve hostname"}
         except Exception as e:
             return {"port": port, "status": "error", "error": str(e)}
+        
+    def _get_common_service_name(self, port):
+        common_ports = {
+            21: "FTP",
+            22: "SSH",
+            23: "Telnet",
+            25: "SMTP",
+            53: "DNS",
+            80: "HTTP",
+            110: "POP3",
+            143: "IMAP",
+            443: "HTTPS",
+            3306: "MySQL",
+            5432: "PostgreSQL",
+            27017: "MongoDB"
+        }
+        return common_ports.get(port, "Unknown")
+
+    # DNS lookup
+    def dns_lookup(self, host):
+        results = {
+            "hostname": host,
+            "records": {}
+        }
+        
+        try:
+            # A record (IPv4)
+            results["records"]["A"] = socket.gethostbyname(host)
+            
+            # all available records
+            all_records = socket.getaddrinfo(host, None)
+            
+            # unique IPv6 addresses
+            ipv6_addresses = set()
+            for record in all_records:
+                if record[0] == socket.AF_INET6:
+                    ipv6_addresses.add(record[4][0])
+            
+            if ipv6_addresses:
+                results["records"]["AAAA"] = list(ipv6_addresses)
+                
+        except socket.gaierror as e:
+            results["error"] = f"DNS lookup failed: {str(e)}"
+        
+        return results
+    
+    def run_diagnostics(self, host, ports=[80, 443, 22, 21]):
+        results = {
+            "timestamp": datetime.now().isoformat(),
+            "host": host,
+            "ping_test": self.ping(host),
+            "dns_lookup": self.dns_lookup(host),
+            "port_scan": [self.check_port(host, port) for port in ports]
+        }
+        
+        return results
+
+def format_diagnostics_results(results):
+    output = []
+    
+    output.append(f"Network Diagnostics Report")
+    output.append(f"Timestamp: {results['timestamp']}")
+    output.append(f"Host: {results['host']}")
+    output.append("")
+    
+    # DNS Information
+    output.append("DNS Lookup Results:")
+    dns_results = results['dns_lookup']
+    if "error" in dns_results:
+        output.append(f"  Error: {dns_results['error']}")
+    else:
+        for record_type, value in dns_results['records'].items():
+            if isinstance(value, list):
+                for v in value:
+                    output.append(f"  {record_type}: {v}")
+            else:
+                output.append(f"  {record_type}: {value}")
+    output.append("")
+    
+    # Ping Results
+    output.append("Ping Results:")
+    ping_results = results['ping_test']
+    if ping_results['status'] == 'success':
+        output.append(f"  Packets: Sent={ping_results['packets_sent']}, "
+                     f"Received={ping_results['packets_received']}, "
+                     f"Lost={ping_results['packet_loss']}%")
+        if ping_results['avg_rtt']:
+            output.append(f"  Round-trip time (ms): "
+                         f"min={ping_results['min_rtt']}, "
+                         f"avg={ping_results['avg_rtt']}, "
+                         f"max={ping_results['max_rtt']}")
+    else:
+        output.append(f"  Error: {ping_results.get('error', 'Unknown error')}")
+    output.append("")
+    
+    # Port Scan Results
+    output.append("Port Scan Results:")
+    for port_result in results['port_scan']:
+        status = port_result['status']
+        if status == 'open':
+            output.append(f"  Port {port_result['port']} ({port_result['service']}): {status}")
+        elif status == 'error':
+            output.append(f"  Port {port_result['port']}: Error - {port_result['error']}")
+        else:
+            output.append(f"  Port {port_result['port']}: {status}")
+    
+    return "\n".join(output)
+
+if __name__ == "__main__":
+    diagnostics = NetworkDiagnostics()
+    
+    host = "google.com"
+    print(f"Running network diagnostics for {host}...")
+    
+    results = diagnostics.run_diagnostics(host)
+    print("\n" + format_diagnostics_results(results))
